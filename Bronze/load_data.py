@@ -4,7 +4,7 @@ import psycopg2
 from psycopg2 import sql
 import gspread
 import logging
-from oauth2client.service_account import ServiceAccountCredentials
+from google.oauth2.service_account import Credentials
 
 # --------------------------
 # 0. Logging Configuration
@@ -16,19 +16,21 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S"
 )
-
 logging.info("ETL process started: Extraction + Load steps")
 
 try:
     # --------------------------
     # 1. Google Sheets Connection
     # --------------------------
-    SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    SCOPE = [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive"
+    ]
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
     CREDS_FILE = os.path.join(BASE_DIR, "service_account.json")
 
-    CREDS = ServiceAccountCredentials.from_json_keyfile_name(CREDS_FILE, SCOPE)
-    client = gspread.authorize(CREDS)
+    creds = Credentials.from_service_account_file(CREDS_FILE, scopes=SCOPE)
+    client = gspread.authorize(creds)
     SHEET_ID = "1503y3s8mtgPpPqEPeQ7SZbkgHt1OOQYfh2mrmNxbPBM"
     SHEET_NAMES = ["customers", "products", "orders", "payments", "delivery"]
 
@@ -58,63 +60,64 @@ try:
     logging.info("Bronze schema recreated successfully.")
 
     # --------------------------
-    # 4. Create Tables
+    # 4. Create Tables (match Apps Script / Sheet)
     # --------------------------
     TABLE_QUERIES = {
         "customers": """
             CREATE TABLE bronze.customers (
-                customer_id VARCHAR(50) PRIMARY KEY,
-                first_name VARCHAR(100),
-                last_name VARCHAR(100),
-                email VARCHAR(150),
-                city VARCHAR(100),
-                signup_date VARCHAR(50),
-                age VARCHAR(20),
-                customer_satisfaction_score VARCHAR(20),
-                loyalty_points VARCHAR(20)
+                customer_id VARCHAR(10) PRIMARY KEY,
+                first_name VARCHAR(50),
+                last_name VARCHAR(50),
+                email VARCHAR(100),
+                city VARCHAR(50),
+                signup_date DATE,
+                age INT,
+                customer_satisfaction_score INT,
+                loyalty_points INT
             )
         """,
         "products": """
             CREATE TABLE bronze.products (
-                product_id VARCHAR(50) PRIMARY KEY,
+                product_id VARCHAR(10) PRIMARY KEY,
                 name VARCHAR(150),
-                category VARCHAR(100),
-                price VARCHAR(50),
-                stock VARCHAR(20),
-                rating VARCHAR(20),
-                discount_percent VARCHAR(20),
-                return_rate VARCHAR(20),
-                brand VARCHAR(100)
+                category VARCHAR(50),
+                price NUMERIC,
+                stock INT,
+                rating NUMERIC(2,1),
+                discount_percent NUMERIC(5,2),
+                return_rate NUMERIC(5,2),
+                brand VARCHAR(50)
             )
         """,
         "orders": """
             CREATE TABLE bronze.orders (
-                order_id VARCHAR(50) PRIMARY KEY,
-                customer_id VARCHAR(50),
-                order_date VARCHAR(50),
-                total_amount VARCHAR(50),
+                order_id VARCHAR(10) PRIMARY KEY,
+                customer_id VARCHAR(10),
+                product_id VARCHAR(10),
+                order_date DATE,
+                total_amount NUMERIC,
                 payment_type VARCHAR(50),
                 order_status VARCHAR(50),
-                repeat_customer VARCHAR(20),
-                cancellation_flag VARCHAR(20)
+                repeat_customer BOOLEAN,
+                cancellation_flag BOOLEAN
             )
         """,
         "payments": """
             CREATE TABLE bronze.payments (
-                payment_id VARCHAR(50) PRIMARY KEY,
-                order_id VARCHAR(50),
-                payment_date VARCHAR(50),
+                payment_id VARCHAR(10) PRIMARY KEY,
+                order_id VARCHAR(10),
+                paymnt_date DATE,
                 payment_type VARCHAR(50),
                 payment_status VARCHAR(50),
-                refund_flag VARCHAR(20)
+                refund_flag BOOLEAN
             )
         """,
         "delivery": """
             CREATE TABLE bronze.delivery (
-                delivery_id VARCHAR(50) PRIMARY KEY,
-                order_id VARCHAR(50),
-                deliver_date VARCHAR(50),
-                delivery_partner VARCHAR(100),
+                delivery_id VARCHAR(10) PRIMARY KEY,
+                order_id VARCHAR(10),
+                deliver_date DATE,
+                delivery_partner VARCHAR(50),
                 delivery_status VARCHAR(50),
                 customer_feedback TEXT
             )
@@ -133,9 +136,13 @@ try:
         logging.info(f"Extracting data from Google Sheet: {sheet_name}")
         sheet = client.open_by_key(SHEET_ID).worksheet(sheet_name)
         data = sheet.get_all_records()
-        if not data:
+        df = pd.DataFrame(data)
+        if df.empty:
             logging.warning(f"No data found in sheet: {sheet_name}")
-        return pd.DataFrame(data)
+        else:
+            # Normalize column names: lowercase, strip spaces
+            df.columns = df.columns.str.strip().str.lower()
+        return df
 
     # --------------------------
     # 6. Insert Data into PostgreSQL
@@ -145,8 +152,31 @@ try:
             logging.warning(f"No data to insert for table: {table}")
             return
 
+        # Type conversions
+        if table == "customers":
+            df['signup_date'] = pd.to_datetime(df['signup_date'], errors='coerce').dt.date
+            df['age'] = pd.to_numeric(df['age'], errors='coerce').astype('Int64')
+            df['customer_satisfaction_score'] = pd.to_numeric(df['customer_satisfaction_score'], errors='coerce').astype('Int64')
+            df['loyalty_points'] = pd.to_numeric(df['loyalty_points'], errors='coerce').astype('Int64')
+        elif table == "products":
+            df['price'] = pd.to_numeric(df['price'], errors='coerce')
+            df['stock'] = pd.to_numeric(df['stock'], errors='coerce').astype('Int64')
+            df['rating'] = pd.to_numeric(df['rating'], errors='coerce')
+            df['discount_percent'] = pd.to_numeric(df['discount_percent'], errors='coerce')
+            df['return_rate'] = pd.to_numeric(df['return_rate'], errors='coerce')
+        elif table == "orders":
+            df['order_date'] = pd.to_datetime(df['order_date'], errors='coerce').dt.date
+            df['total_amount'] = pd.to_numeric(df['total_amount'], errors='coerce')
+            df['repeat_customer'] = df['repeat_customer'].apply(lambda x: True if x in [1,'1',True] else False)
+            df['cancellation_flag'] = df['cancellation_flag'].apply(lambda x: True if x in [1,'1',True] else False)
+        elif table == "payments":
+            df['paymnt_date'] = pd.to_datetime(df['paymnt_date'], errors='coerce').dt.date
+            df['refund_flag'] = df['refund_flag'].apply(lambda x: True if x in [1,'1',True] else False)
+        elif table == "delivery":
+            df['deliver_date'] = pd.to_datetime(df['deliver_date'], errors='coerce').dt.date
+
         columns = list(df.columns)
-        values = [tuple(str(x) for x in row) for row in df.to_numpy()]  # Convert all to string
+        values = [tuple(None if pd.isna(x) else x for x in row) for row in df.to_numpy()]
 
         insert_query = sql.SQL("INSERT INTO bronze.{} ({}) VALUES ({})").format(
             sql.Identifier(table),
@@ -160,12 +190,11 @@ try:
         logging.info(f"Data inserted into bronze.{table} successfully. Rows: {len(values)}")
 
     # --------------------------
-    # 7. Run Pipeline
+    # 7. Run ETL Pipeline
     # --------------------------
     for sheet in SHEET_NAMES:
         df = get_data(sheet)
-        if not df.empty:
-            insert_data(df, sheet)
+        insert_data(df, sheet)
 
     logging.info("All data loaded into PostgreSQL bronze schema successfully!")
 
