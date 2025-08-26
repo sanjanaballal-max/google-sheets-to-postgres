@@ -1,0 +1,24 @@
+2025-08-26 17:25:41 - INFO - ETL process started: Bronze → Silver (FULL CLEAN, strip spaces)
+2025-08-26 17:25:41 - INFO - Reading bronze tables...
+2025-08-26 17:25:41 - INFO - Loaded bronze.customers rows: 52000
+2025-08-26 17:25:42 - INFO - Loaded bronze.products rows: 52000
+2025-08-26 17:25:42 - INFO - Loaded bronze.orders rows: 52000
+2025-08-26 17:25:42 - INFO - Loaded bronze.payments rows: 52000
+2025-08-26 17:25:42 - INFO - Loaded bronze.delivery rows: 52000
+2025-08-26 17:25:42 - INFO - Starting transformation and full cleaning...
+2025-08-26 17:25:43 - WARNING - 5197 customer rows rejected: invalid age
+2025-08-26 17:25:43 - WARNING - 9918 order rows rejected: customer_id FK mismatch
+2025-08-26 17:25:43 - WARNING - 14116 payment rows rejected: order_id FK mismatch
+2025-08-26 17:25:43 - WARNING - 14117 delivery rows rejected: order_id FK mismatch
+2025-08-26 17:25:43 - INFO - Loading silver tables...
+2025-08-26 17:25:45 - INFO - silver.customers: loaded 46803 rows
+2025-08-26 17:25:47 - INFO - silver.products: loaded 46804 rows
+2025-08-26 17:25:48 - INFO - silver.orders: loaded 42082 rows
+2025-08-26 17:25:49 - INFO - silver.payments: loaded 37884 rows
+2025-08-26 17:25:50 - INFO - silver.delivery: loaded 37883 rows
+2025-08-26 17:25:50 - INFO - Loading rejected rows into audit.rejected_rows...
+2025-08-26 17:25:52 - INFO - Rejected rows logged: customers | Invalid age | 5197 rows
+2025-08-26 17:25:55 - INFO - Rejected rows logged: orders | Invalid customer_id FK | 9918 rows
+2025-08-26 17:26:00 - INFO - Rejected rows logged: payments | Invalid order_id FK | 14116 rows
+2025-08-26 17:26:05 - INFO - Rejected rows logged: delivery | Invalid order_id FK | 14117 rows
+2025-08-26 17:26:05 - INFO - ETL process completed successfully!
