@@ -1,0 +1,17 @@
+2025-08-26 12:36:10 - INFO - Starting ETL pipeline ...
+2025-08-26 12:36:10 - INFO - Reading bronze tables ...
+2025-08-26 12:36:10 - INFO - bronze.customers: 51999 rows read
+2025-08-26 12:36:10 - INFO - bronze.products: 51999 rows read
+2025-08-26 12:36:11 - INFO - bronze.orders: 51999 rows read
+2025-08-26 12:36:11 - INFO - bronze.payments: 51999 rows read
+2025-08-26 12:36:11 - INFO - bronze.delivery: 51999 rows read
+2025-08-26 12:36:12 - WARNING - [DQ] payments | PAYMENT_LOGIC | payment before order or cancelled+success | rejected_rows=3749
+2025-08-26 12:36:12 - WARNING - [DQ] delivery | DELIVERY_LOGIC | deliver_date < order_date | rejected_rows=22363
+2025-08-26 12:36:12 - INFO - Loading silver tables ...
+2025-08-26 12:36:14 - INFO - silver.customers: loaded 51999 rows
+2025-08-26 12:36:15 - INFO - silver.products: loaded 51999 rows
+2025-08-26 12:36:17 - INFO - silver.orders: loaded 51999 rows
+2025-08-26 12:36:18 - INFO - silver.payments: loaded 48250 rows
+2025-08-26 12:36:19 - INFO - silver.delivery: loaded 29636 rows
+2025-08-26 12:36:19 - INFO - Loading rejected rows into audit.rejected_rows ...
+2025-08-26 12:36:27 - INFO - ETL pipeline completed successfully.
